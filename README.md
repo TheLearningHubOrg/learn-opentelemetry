@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-CNCF-425CC7.svg?logo=opentelemetry)](https://opentelemetry.io/)
 [![OTLP](https://img.shields.io/badge/Protocol-OTLP%20gRPC%20%7C%20HTTP-F5A800.svg?logo=opentelemetry)](https://opentelemetry.io/docs/specs/otlp/)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-339933.svg?logo=nodedotjs)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933.svg?logo=nodedotjs)](https://nodejs.org/)
 [![Jaeger](https://img.shields.io/badge/Jaeger-v2-60D0E4.svg?logo=jaeger)](https://www.jaegertracing.io/)
 [![Production Ready](https://img.shields.io/badge/Status-Enterprise%20Grade-brightgreen.svg)](https://github.com/TheLearningHubOrg/learn-opentelemetry)
 
@@ -205,7 +205,7 @@ npm pkg set type=module
 npm install @opentelemetry/api @opentelemetry/sdk-trace-node @opentelemetry/resources @opentelemetry/semantic-conventions
 ```
 
-```typescript
+```javascript
 // hello.mjs: print two nested spans to the console
 import { trace } from '@opentelemetry/api';
 import { resourceFromAttributes } from '@opentelemetry/resources';
@@ -667,7 +667,7 @@ spec:
           image: registry.example.com/checkout:2.3.1
 ```
 
-The operator also supports `inject-java`, `inject-python`, `inject-dotnet` and `inject-go` (the Go variant uses eBPF and needs extra privileges). Injection happens at pod creation, so existing pods need a rollout restart to pick it up.
+The operator also supports `inject-java`, `inject-python`, `inject-dotnet` and `inject-go`. The Go variant uses eBPF, needs elevated privileges, and also requires the `instrumentation.opentelemetry.io/otel-go-auto-target-exe` annotation naming the binary to attach to. Injection happens at pod creation, so existing pods need a rollout restart to pick it up.
 
 ---
 
@@ -832,7 +832,7 @@ An **exemplar** is a sample measurement stored next to an aggregated metric poin
 
 The Collector is a single Go binary that sits between your services and your backends. It is built from five component types:
 
-1. **Receivers** take data in: `otlp`, `prometheus` (scrape), `file_log`, `hostmetrics`, `kafka`, and many more.
+1. **Receivers** take data in: `otlp`, `prometheus` (scrape), `file_log`, `host_metrics`, `kafka`, and many more.
 2. **Processors** transform data in flight: `memory_limiter`, `batch`, `resource`, `attributes`, `transform`, `filter`, `k8s_attributes`, `tail_sampling`.
 3. **Exporters** send data out: `otlp_grpc`, `otlp_http`, `prometheus`, `debug`, plus vendor exporters.
 4. **Connectors** are an exporter for one pipeline and a receiver for another, such as `span_metrics`, which turns traces into RED metrics.
@@ -854,7 +854,7 @@ flowchart LR
 
 There are several distributions. **core** is minimal, **contrib** includes almost every component, and **k8s** and **otlp** are trimmed builds for specific jobs. For production you can build your own with the OpenTelemetry Collector Builder (`ocb`) so the binary contains only the components you use.
 
-> **Naming note:** recent Collector releases moved many component types to snake_case: `otlp` exporter became `otlp_grpc`, `otlphttp` became `otlp_http`, `k8sattributes` became `k8s_attributes`, `spanmetrics` became `span_metrics`, and `loadbalancing` became `load_balancing`. The old names still work as deprecated aliases, so you will see both in older material.
+> **Naming note:** recent Collector releases moved many component types to snake_case: `otlp` exporter became `otlp_grpc`, `otlphttp` became `otlp_http`, `k8sattributes` became `k8s_attributes`, `spanmetrics` became `span_metrics`, `filelog` became `file_log`, `hostmetrics` became `host_metrics`, and `loadbalancing` became `load_balancing`. The old names still work as deprecated aliases, so you will see both in older material.
 
 ### 5.2 A Production Collector Configuration
 
@@ -1068,14 +1068,14 @@ At roughly 1 KB per span that is about 2 TB per day before replication. A layere
 
 1. **Head sampling in SDKs** (`parentbased_traceidratio`) cuts volume at the source and saves network and CPU. Use it for very high-volume, low-value traffic.
 2. **Tail sampling in gateways** keeps 100% of errors, slow requests and important tenants.
-3. **Metrics from unsampled data** (`span_metrics` before the sampler, or SDK metrics) keep SLO dashboards exact whatever the trace sample rate.
+3. **Metrics from unsampled data** keep SLO dashboards exact whatever the trace sample rate. SDK metrics see every request. `span_metrics` placed before `tail_sampling` sees every span that *reaches* the Collector, so if you also head-sample in the SDK, either compute SLIs from SDK metrics or remember that `span_metrics` counts only the head-sampled share.
 
 ```mermaid
 flowchart LR
     SDK["SDK head sampler: keep 50%"] --> AG["Agent"] --> LB["load_balancing by traceID"]
-    LB --> SM["span_metrics: RED from all received spans"]
+    LB --> SM["span_metrics: RED from the 50% that arrive"]
     LB --> TS["tail_sampling: errors + slow + 5% baseline"]
-    TS --> BE["Trace backend: ~6-8% of original volume"]
+    TS --> BE["Trace backend: a few percent of original volume"]
     SM --> PM["Prometheus: accurate rates"]
 ```
 
@@ -1200,10 +1200,10 @@ An observability pipeline that fails silently is worse than none. Scrape the Col
 
 | Metric | What It Tells You | Alert When |
 | :--- | :--- | :--- |
-| `otelcol_receiver_refused_spans` | Receivers rejected data, often because `memory_limiter` is shedding | Rate above zero for 5 minutes |
-| `otelcol_exporter_send_failed_spans` | The backend is rejecting or unreachable | Any sustained rate |
+| `otelcol_receiver_refused_spans_total` | Receivers rejected data, often because `memory_limiter` is shedding | Rate above zero for 5 minutes |
+| `otelcol_exporter_send_failed_spans_total` | The backend is rejecting or unreachable | Any sustained rate |
 | `otelcol_exporter_queue_size` vs `otelcol_exporter_queue_capacity` | How full the sending queue is | Above 80% of capacity |
-| `otelcol_processor_dropped_spans` (or equivalent) | Data deliberately or accidentally dropped | Unexpected increase |
+| `otelcol_processor_incoming_items_total` vs `otelcol_processor_outgoing_items_total` | Items a processor dropped (deliberately, as a filter does, or by accident) | Unexpected gap between the two |
 | Process RSS / CPU | Headroom before OOM or throttling | Near container limits |
 
 Names can differ slightly between Collector versions and telemetry levels, so confirm them against your build's `/metrics` output before writing alerts.
@@ -1369,7 +1369,7 @@ The companion suite also checks parent-child links, baggage-to-attribute copying
 > **Answer**: It can produce too many spans (fs, DNS, every Redis command), capture sensitive data (SQL statements with literals, headers), add startup cost, and break with library upgrades. Control it by enabling only needed instrumentations (`OTEL_NODE_ENABLED_INSTRUMENTATIONS` or explicit config), turning on statement sanitisation, pinning instrumentation versions alongside library versions, and testing upgrades in staging with trace snapshots. Keep the Collector's redaction as a safety net.
 
 #### Q36: How do you debug "no data is arriving" end to end?
-> **Answer**: Work from the source outward. Set `OTEL_LOG_LEVEL=debug` in the SDK to see exporter errors, or temporarily add a console exporter to confirm spans are created at all. Check that the endpoint, protocol and port match: sending `http/protobuf` to `4317` is a classic mistake. On the Collector, add a `debug` exporter to the pipeline and check `otelcol_receiver_accepted_spans`. Then check exporter failure metrics and backend authentication. Finally confirm the backend query uses the right `service.name` and time range.
+> **Answer**: Work from the source outward. Set `OTEL_LOG_LEVEL=debug` in the SDK to see exporter errors, or temporarily add a console exporter to confirm spans are created at all. Check that the endpoint, protocol and port match: sending `http/protobuf` to `4317` is a classic mistake. On the Collector, add a `debug` exporter to the pipeline and check `otelcol_receiver_accepted_spans_total`. Then check exporter failure metrics and backend authentication. Finally confirm the backend query uses the right `service.name` and time range.
 
 #### Q37: How should sampling be configured across a polyglot call chain?
 > **Answer**: The entry service (gateway, edge or browser) makes the head decision with a ratio sampler, and every other service uses a parent-based sampler so it follows the `traceparent` flag. Use the same propagators everywhere, normally `tracecontext,baggage`. Centralise defaults in the Operator `Instrumentation` resource or a shared environment configuration so a single team cannot accidentally sample independently. Tail sampling in the gateway then refines what is stored, regardless of language.

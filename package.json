@@ -21,7 +21,7 @@
   "author": "The Learning Hub",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
