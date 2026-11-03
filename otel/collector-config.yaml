@@ -1,0 +1,63 @@
+# OpenTelemetry Collector configuration (contrib distribution).
+# Pipeline order matters: memory_limiter first, batch last before export.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # 1. Refuse data before the process runs out of memory.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  # 2. Stamp every signal with where it passed through.
+  resource:
+    attributes:
+      - key: telemetry.pipeline
+        value: learn-opentelemetry
+        action: upsert
+  # 3. Drop sensitive attributes centrally instead of in every service.
+  attributes/scrub:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+  # 4. Group data into larger requests to cut export overhead.
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+exporters:
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, attributes/scrub, batch]
+      exporters: [otlp_grpc/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug]

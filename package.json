@@ -1,0 +1,46 @@
+{
+  "name": "learn-opentelemetry",
+  "version": "1.0.0",
+  "description": "Runnable companion project for the Learn OpenTelemetry masterclass: a Node.js service with traces, metrics and logs exported over OTLP to the Collector and Jaeger.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --import ./dist/instrumentation.js dist/index.js",
+    "dev": "tsx --import ./src/instrumentation.ts src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "keywords": [
+    "opentelemetry",
+    "observability",
+    "tracing",
+    "metrics",
+    "otlp"
+  ],
+  "author": "The Learning Hub",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "~1.9.0",
+    "@opentelemetry/api-logs": "^0.223.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.81.2",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.223.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.223.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/instrumentation": "^0.223.0",
+    "@opentelemetry/resources": "^2.12.0",
+    "@opentelemetry/sdk-logs": "^0.223.0",
+    "@opentelemetry/sdk-metrics": "^2.12.0",
+    "@opentelemetry/sdk-node": "^0.223.0",
+    "@opentelemetry/sdk-trace-node": "^2.12.0",
+    "@opentelemetry/semantic-conventions": "^1.29.0"
+  }
+}
